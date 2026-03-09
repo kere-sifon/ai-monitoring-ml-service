@@ -94,23 +94,43 @@ helm upgrade --install ml-service ./charts \
 - Comment `/deploy openshift` or `/deploy oc` on a PR to deploy that PR's code to OpenShift
 - The deployment creates an OpenShift Route for external access
 
-#### PR Comment-Based Deployment
+#### PR Comment-Based Deployment (For Testing Before Merge)
+
+**Use this to test your PR changes BEFORE merging to main.**
 
 You can deploy directly from pull requests by adding a comment:
 
 - **Deploy to AKS**: Comment `/deploy aks` on the PR
 - **Deploy to OpenShift**: Comment `/deploy openshift` or `/deploy oc` on the PR
 
-Requirements:
+**When to use:**
+- ✅ **Before merging**: Test your changes in a live environment
+- ✅ **During PR review**: Let reviewers test the actual deployment
+- ❌ **After merging**: Not needed - main branch auto-deploys to AKS
+
+**Requirements:**
 - You must have write access to the repository
 - Required secrets must be configured (see Configuration section below)
-- The PR must be open and have passing tests
+- The PR must be **open** (not merged or closed)
+- Comment must be exactly `/deploy aks` or `/deploy openshift` (no extra text)
 
-The workflow will:
+**The workflow will:**
 1. Detect the deployment target from your comment
 2. Build and push the Docker image with the PR's SHA
 3. Deploy to the specified platform
 4. Comment back with deployment status and details
+
+**Example workflow:**
+```
+1. Create PR with your changes
+2. Comment: /deploy aks
+3. Wait for deployment (2-5 minutes)
+4. Test your changes using the deployed service
+5. If everything works, merge the PR
+6. Main branch auto-deploys to production AKS
+```
+
+See [DEPLOYMENT_WORKFLOW.md](docs/DEPLOYMENT_WORKFLOW.md) for detailed examples and troubleshooting.
 
 #### Configuration
 

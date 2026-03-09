@@ -3,6 +3,9 @@ FROM python:3.11-alpine AS builder
 
 WORKDIR /app
 
+# Update all packages to latest versions to fix security vulnerabilities
+RUN apk update && apk upgrade --no-cache
+
 # Install build dependencies for C extensions (numpy, scikit-learn, pandas, psycopg2)
 RUN apk add --no-cache \
     gcc \
@@ -22,6 +25,9 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Final stage
 FROM python:3.11-alpine
+
+# Update all packages to latest versions to fix security vulnerabilities
+RUN apk update && apk upgrade --no-cache
 
 # Install only runtime libraries needed by compiled extensions and curl for healthcheck
 # libgomp: required by scikit-learn for OpenMP parallelism
