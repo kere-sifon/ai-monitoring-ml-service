@@ -358,7 +358,7 @@ jobs:
   # Deploy to OpenShift via PR comment (works on open or merged PRs)
   deploy-openshift:
     needs: [detect-deployment-target]
-    runs-on: ubuntu-latest
+    runs-on: oc-run 
     if: needs.detect-deployment-target.outputs.target == 'openshift'
     permissions:
       contents: read
