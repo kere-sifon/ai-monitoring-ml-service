@@ -56,10 +56,12 @@ jobs:
 
       - name: Parse deployment target
         id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          COMMENT="${{ github.event.comment.body }}"
-          if echo "$COMMENT" | grep -qiE '/deploy\s+(aks|openshift|oc)'; then
-            TARGET=$(echo "$COMMENT" | grep -oiE '(aks|openshift|oc)' | head -1 | tr '[:upper:]' '[:lower:]')
+          # Use environment variable to avoid script injection (S7630)
+          if echo "$COMMENT_BODY" | grep -qiE '^/deploy\s+(aks|openshift|oc)\s*$'; then
+            TARGET=$(echo "$COMMENT_BODY" | grep -oiE '(aks|openshift|oc)' | head -1 | tr '[:upper:]' '[:lower:]')
             # Normalize 'oc' to 'openshift'
             if [ "$TARGET" = "oc" ]; then
               TARGET="openshift"
