@@ -1,0 +1,33 @@
+{{- if .Values.openshift.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "ml-service.fullname" . }}
+  labels:
+    {{- include "ml-service.labels" . | nindent 4 }}
+  {{- with .Values.openshift.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.openshift.route.host }}
+  host: {{ .Values.openshift.route.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "ml-service.fullname" . }}
+    weight: 100
+  port:
+    targetPort: http
+  {{- if .Values.openshift.route.tls.enabled }}
+  tls:
+    termination: {{ .Values.openshift.route.tls.termination }}
+    {{- if eq .Values.openshift.route.tls.termination "reencrypt" }}
+    destinationCACertificate: {{ .Values.openshift.route.tls.destinationCACertificate }}
+    {{- end }}
+    insecureEdgeTerminationPolicy: {{ .Values.openshift.route.tls.insecureEdgeTerminationPolicy }}
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}
+
+# Made with Bob
