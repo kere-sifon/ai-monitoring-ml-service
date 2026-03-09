@@ -19,7 +19,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # Detect deployment target from PR comment
+  # Detect deployment target from PR comment (works on open or closed/merged PRs)
   detect-deployment-target:
     runs-on: ubuntu-latest
     if: github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/deploy')
@@ -29,7 +29,8 @@ jobs:
       pr_sha: ${{ steps.pr.outputs.sha }}
     steps:
       - name: Check if commenter has write access
-        uses: actions/github-script@v7
+        # Using full commit SHA for security (S7637) - v7 tag
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         with:
           script: |
             const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
@@ -43,7 +44,8 @@ jobs:
 
       - name: Get PR details
         id: pr
-        uses: actions/github-script@v7
+        # Using full commit SHA for security (S7637) - v7 tag
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         with:
           script: |
             const pr = await github.rest.pulls.get({
@@ -51,8 +53,16 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.issue.number
             });
-            core.setOutput('ref', pr.data.head.ref);
-            core.setOutput('sha', pr.data.head.sha);
+            
+            // For merged PRs, use merge commit SHA; for open PRs, use head SHA
+            const sha = pr.data.merged ? pr.data.merge_commit_sha : pr.data.head.sha;
+            const ref = pr.data.merged ? pr.data.base.ref : pr.data.head.ref;
+            
+            core.setOutput('ref', ref);
+            core.setOutput('sha', sha);
+            core.setOutput('merged', pr.data.merged);
+            
+            console.log(`PR #${context.issue.number} - Merged: ${pr.data.merged}, SHA: ${sha}, Ref: ${ref}`);
 
       - name: Parse deployment target
         id: parse
@@ -74,7 +84,8 @@ jobs:
           fi
 
       - name: Add reaction to comment
-        uses: actions/github-script@v7
+        # Using full commit SHA for security (S7637) - v7 tag
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         with:
           script: |
             await github.rest.reactions.createForIssueComment({
@@ -149,20 +160,24 @@ jobs:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        # Using full commit SHA for security (S7637) - v4 tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        # Using full commit SHA for security (S7637) - v3 tag
+        uses: github/codeql-action/init@e2b3eafc8d227b0241d48be5f425d47c2d750a13
         with:
           languages: python
           build-mode: none
 
       - name: Perform CodeQL Analysis
         id: codeql-analysis
-        uses: github/codeql-action/analyze@v4
+        # Using full commit SHA for security (S7637) - v3 tag
+        uses: github/codeql-action/analyze@e2b3eafc8d227b0241d48be5f425d47c2d750a13
 
       - name: Upload CodeQL SARIF as artifact
-        uses: actions/upload-artifact@v4
+        # Using full commit SHA for security (S7637) - v4 tag
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: codeql-sarif-results
           path: ${{ steps.codeql-analysis.outputs.sarif-output }}
@@ -275,7 +290,8 @@ jobs:
       packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        # Using full commit SHA for security (S7637) - v4 tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set image tag for scan
         id: scan-tag
@@ -288,7 +304,8 @@ jobs:
           fi
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v3
+        # Using full commit SHA for security (S7637) - v3 tag
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -311,91 +328,15 @@ jobs:
             '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.scan-tag.outputs.tag }}'
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v4
+        # Using full commit SHA for security (S7637) - v3 tag
+        uses: github/codeql-action/upload-sarif@e2b3eafc8d227b0241d48be5f425d47c2d750a13
         with:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy-container'
 
-  # Deploys to AKS on main branch push (uses values.yaml tag)
-  deploy-aks:
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        # Using full commit SHA for security (S7637) - v4 tag
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Set up Helm
-        # Using full commit SHA for security (S7637) - v3 tag
-        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78
-        with:
-          version: v3.13.0
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: 'v1.28.0'
-
-      - name: Get AKS credentials
-        run: |
-          az aks get-credentials \
-            --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} \
-            --name ${{ secrets.AKS_CLUSTER_NAME }} \
-            --overwrite-existing
-
-      - name: Create namespace if not exists
-        run: |
-          kubectl create namespace ai-monitoring --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Clear stuck Helm release (if any)
-        run: |
-          # Resolve "another operation is in progress" from interrupted previous deploy
-          if helm list -n ai-monitoring 2>/dev/null | grep -q ml-service; then
-            echo "Clearing any pending Helm operation..."
-            helm rollback ml-service -n ai-monitoring 2>/dev/null || true
-            sleep 5
-          fi
-
-      - name: Deploy with Helm
-        run: |
-          # Skip --wait so we don't block if pods crash (e.g. before fixes); manifests still apply
-          helm upgrade --install ml-service ./charts \
-            --namespace ai-monitoring \
-            --create-namespace \
-            -f charts/values.yaml
-
-      - name: Verify deployment
-        run: |
-          echo "Checking deployment status..."
-          kubectl rollout status deployment/ml-service -n ai-monitoring --timeout=2m
-          echo ""
-          echo "Pods:"
-          kubectl get pods -n ai-monitoring -l app.kubernetes.io/name=ml-service -o wide
-          echo ""
-          echo "Services:"
-          kubectl get svc -n ai-monitoring -l app.kubernetes.io/name=ml-service
-          echo ""
-          echo "HPA:"
-          kubectl get hpa -n ai-monitoring
-
-      - name: Debug pod (on failure)
-        if: failure()
-        run: |
-          echo "=== Pod status ==="
-          kubectl get pods -n ai-monitoring -l app.kubernetes.io/name=ml-service -o wide
-          echo ""
-          echo "=== Pod description ==="
-          kubectl describe pods -n ai-monitoring -l app.kubernetes.io/name=ml-service
-          echo ""
-          echo "=== Pod logs (if any) ==="
-          kubectl logs -n ai-monitoring -l app.kubernetes.io/name=ml-service --tail=100 --all-containers=true 2>/dev/null || true
+  # REMOVED: Automatic deployment on main branch push
+  # Now deployments are triggered by PR comments only
+  # Comment /deploy aks or /deploy openshift on a merged PR to deploy
 
   helm-lint:
     runs-on: ubuntu-latest
@@ -413,10 +354,10 @@ jobs:
       - name: Lint Helm chart
         run: helm lint charts/
 
-  # Deploy to OpenShift via PR comment
+  # Deploy to OpenShift via PR comment (works on open or merged PRs)
   deploy-openshift:
     needs: [detect-deployment-target]
-    runs-on: oc_run
+    runs-on: ubuntu-latest
     if: needs.detect-deployment-target.outputs.target == 'openshift'
     permissions:
       contents: read
@@ -484,7 +425,8 @@ jobs:
           echo "Route URL: https://$ROUTE_URL"
 
       - name: Comment on PR with deployment info
-        uses: actions/github-script@v7
+        # Using full commit SHA for security (S7637) - v7 tag
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         with:
           script: |
             const routeUrl = '${{ steps.route.outputs.url }}';
@@ -509,7 +451,8 @@ jobs:
 
       - name: Comment on PR with failure
         if: failure()
-        uses: actions/github-script@v7
+        # Using full commit SHA for security (S7637) - v7 tag
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         with:
           script: |
             await github.rest.issues.createComment({
@@ -541,17 +484,20 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Azure Login
-        uses: azure/login@v2
+        # Using full commit SHA for security (S7637) - v2 tag
+        uses: azure/login@6c251865b4e6290e7b78be643ea2d005bc51f69a
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Set up Helm
+        # Using full commit SHA for security (S7637) - v3 tag
         uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78
         with:
           version: v3.13.0
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
+        # Using full commit SHA for security (S7637) - v4 tag
+        uses: azure/setup-kubectl@3e0aec4d80787158d308d7b364cb1b702e7feb7f
         with:
           version: 'v1.28.0'
 
@@ -588,7 +534,8 @@ jobs:
           kubectl get svc -n ai-monitoring -l app.kubernetes.io/name=ml-service
 
       - name: Comment on PR with deployment info
-        uses: actions/github-script@v7
+        # Using full commit SHA for security (S7637) - v7 tag
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         with:
           script: |
             await github.rest.issues.createComment({
@@ -612,7 +559,8 @@ jobs:
 
       - name: Comment on PR with failure
         if: failure()
-        uses: actions/github-script@v7
+        # Using full commit SHA for security (S7637) - v7 tag
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         with:
           script: |
             await github.rest.issues.createComment({
