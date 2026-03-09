@@ -72,3 +72,21 @@ readinessProbe:
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 6
+
+# OpenShift-specific configuration
+openshift:
+  enabled: false
+  route:
+    enabled: true
+    host: ""  # Leave empty for auto-generated route
+    annotations:
+      haproxy.router.openshift.io/timeout: 60s
+    tls:
+      enabled: true
+      termination: edge  # edge, passthrough, or reencrypt
+      insecureEdgeTerminationPolicy: Redirect
+      destinationCACertificate: ""
+  securityContext:
+    # OpenShift assigns random UID, so we use fsGroup for volume permissions
+    fsGroup: 1000
+    runAsNonRoot: true

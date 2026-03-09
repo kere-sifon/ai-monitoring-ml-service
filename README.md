@@ -50,9 +50,11 @@ open http://localhost:8000/docs
 docker build -t ml-service:latest .
 
 
-### Kubernetes/AKS Deployment
+### Kubernetes Deployment
 
-The ML service is designed to run on AKS with efficient resource management and auto-scaling.
+The ML service supports deployment to both **Azure Kubernetes Service (AKS)** and **OpenShift** with efficient resource management and auto-scaling.
+
+#### Deploy to AKS
 
 **Quick Deploy:**
 ```bash
@@ -67,16 +69,74 @@ helm upgrade --install ml-service ./charts \
 ```
 
 **Automated CI/CD:**
-- Push version tag (e.g., `v1.0.0`) to trigger build and deployment
-- Merge to `main` branch to deploy to AKS
+- Push to `main` branch to deploy to AKS automatically
+- Comment `/deploy aks` on a PR to deploy that PR's code to AKS
 
-**Configuration:**
-- **Resources**: 250m-1 CPU, 512Mi-2Gi memory (optimized for shared node pool)
+#### Deploy to OpenShift
+
+**Quick Deploy:**
+```bash
+# Login to OpenShift
+oc login --token=<your-token> --server=<your-server>
+
+# Create/switch to project
+oc new-project ai-monitoring
+
+# Deploy with Helm
+helm upgrade --install ml-service ./charts \
+  --namespace ai-monitoring \
+  --create-namespace \
+  -f charts/values.yaml \
+  -f charts/values-openshift.yaml
+```
+
+**Automated CI/CD:**
+- Comment `/deploy openshift` or `/deploy oc` on a PR to deploy that PR's code to OpenShift
+- The deployment creates an OpenShift Route for external access
+
+#### PR Comment-Based Deployment
+
+You can deploy directly from pull requests by adding a comment:
+
+- **Deploy to AKS**: Comment `/deploy aks` on the PR
+- **Deploy to OpenShift**: Comment `/deploy openshift` or `/deploy oc` on the PR
+
+Requirements:
+- You must have write access to the repository
+- Required secrets must be configured (see Configuration section below)
+- The PR must be open and have passing tests
+
+The workflow will:
+1. Detect the deployment target from your comment
+2. Build and push the Docker image with the PR's SHA
+3. Deploy to the specified platform
+4. Comment back with deployment status and details
+
+#### Configuration
+
+**Common Settings:**
+- **Resources**: 250m-1 CPU, 512Mi-2Gi memory
 - **Auto-scaling**: HPA enabled (1-2 replicas based on CPU/memory utilization)
-- **Storage**: 5Gi persistent volume for model caching
+- **Storage**: Optional 5Gi persistent volume for model caching
 - **Health Checks**: Liveness and readiness probes configured
 
-The service runs on the system node pool alongside other workloads with appropriate resource limits to ensure stable operation.
+**Platform-Specific:**
+- **AKS**: Uses Ingress for external access, runs on system node pool
+- **OpenShift**: Uses Routes for external access, automatic security context assignment
+
+#### Required Secrets
+
+For automated deployments, configure these GitHub secrets:
+
+**For AKS:**
+- `AZURE_CREDENTIALS`: Azure service principal credentials
+- `AKS_RESOURCE_GROUP`: Azure resource group name
+- `AKS_CLUSTER_NAME`: AKS cluster name
+
+**For OpenShift:**
+- `OPENSHIFT_TOKEN`: OpenShift authentication token
+- `OPENSHIFT_SERVER`: OpenShift API server URL
+- `OPENSHIFT_PROJECT`: OpenShift project/namespace name
 
 # Run container
 docker run -p 8000:8000 ml-service:latest
