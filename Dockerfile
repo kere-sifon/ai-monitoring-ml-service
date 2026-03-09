@@ -1,5 +1,5 @@
 # Multi-stage build for ML Service (Alpine-based for minimal CVE surface)
-FROM python:3.11-alpine AS builder
+FROM python:3.11-alpine3.21 AS builder
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Final stage
-FROM python:3.11-alpine
+FROM python:3.11-alpine3.21
 
 # Install only runtime libraries needed by compiled extensions and curl for healthcheck
 # libgomp: required by scikit-learn for OpenMP parallelism
