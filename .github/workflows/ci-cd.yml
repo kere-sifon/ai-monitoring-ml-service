@@ -99,10 +99,10 @@ jobs:
               content: 'rocket'
             });
 
-  # Runs on develop and PRs only (NOT on main or tags or issue comments)
+  # Runs on develop push only (NOT on PRs, main, tags, or issue comments)
   build-and-test:
     runs-on: ubuntu-latest
-    if: "!startsWith(github.ref, 'refs/tags/') && github.ref != 'refs/heads/main' && github.event_name != 'issue_comment'"
+    if: "github.ref == 'refs/heads/develop' && github.event_name == 'push'"
     steps:
       - name: Checkout code
         # Using full commit SHA for security (S7637) - v4 tag
@@ -154,10 +154,10 @@ jobs:
           files: coverage.xml
           fail_ci_if_error: false
 
-  # CodeQL SAST - runs in parallel with build-and-test
+  # CodeQL SAST - runs in parallel with build-and-test on develop push only
   sast-codeql:
     runs-on: ubuntu-latest
-    if: "!startsWith(github.ref, 'refs/tags/') && github.ref != 'refs/heads/main' && github.event_name != 'issue_comment'"
+    if: "github.ref == 'refs/heads/develop' && github.event_name == 'push'"
     permissions:
       security-events: write
       actions: read
@@ -344,7 +344,7 @@ jobs:
 
   helm-lint:
     runs-on: ubuntu-latest
-    if: github.event_name != 'issue_comment'
+    if: "github.ref == 'refs/heads/develop' && github.event_name == 'push'"
     steps:
       - name: Checkout code
         # Using full commit SHA for security (S7637) - v4 tag

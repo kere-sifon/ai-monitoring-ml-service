@@ -21,7 +21,8 @@ RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Install to /install directory instead of --user to avoid path issues
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # Final stage
 FROM python:3.11-alpine
@@ -45,7 +46,7 @@ RUN addgroup -S appuser && adduser -S -G appuser appuser
 WORKDIR /app
 
 # Copy Python dependencies from builder
-COPY --from=builder /root/.local /home/appuser/.local
+COPY --from=builder /install /usr/local
 
 # Remove pip/wheel/setuptools from runtime image (not needed, avoids CVE surface)
 RUN rm -rf /usr/local/lib/python3.11/site-packages/pip* \
@@ -56,8 +57,7 @@ RUN rm -rf /usr/local/lib/python3.11/site-packages/pip* \
            /usr/local/bin/pip* /usr/local/bin/pip3* \
            /usr/local/bin/wheel
 
-# Make sure scripts in .local are usable
-ENV PATH=/home/appuser/.local/bin:$PATH
+# Python path is already set correctly with /usr/local
 
 # Copy only necessary application files
 COPY main.py ./
@@ -66,7 +66,7 @@ COPY requirements.txt ./
 
 # Create models directory and set proper ownership
 RUN mkdir -p models && \
-    chown -R appuser:appuser /app /home/appuser/.local
+    chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser
