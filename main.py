@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 model_service = None
 
 
+def _model_dir() -> str:
+    """Model storage path: MODEL_PATH (Helm/K8s), MODEL_DIR, or default relative dir."""
+    return os.environ.get("MODEL_PATH") or os.environ.get("MODEL_DIR") or "models"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events"""
@@ -32,7 +37,7 @@ async def lifespan(app: FastAPI):
 
     # Startup
     logger.info("Starting ML Service...")
-    model_service = ModelService()
+    model_service = ModelService(model_dir=_model_dir())
 
     # Try to load existing model
     try:

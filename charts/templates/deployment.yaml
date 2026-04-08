@@ -18,6 +18,10 @@ spec:
         {{- include "ml-service.selectorLabels" . | nindent 8 }}
         tier: backend
     spec:
+      {{- if .Values.openshift.enabled }}
+      securityContext:
+        {{- toYaml .Values.openshift.securityContext | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ include "ml-service.serviceAccountName" . }}
       automountServiceAccountToken: false
       {{- with .Values.tolerations }}

@@ -64,9 +64,11 @@ COPY main.py ./
 COPY app/ ./app/
 COPY requirements.txt ./
 
-# Create models directory and set proper ownership
+# Writable by arbitrary UID (OpenShift runs with namespace-assigned UID, not appuser).
+# Group root (0) + g+rwx lets the container process write under /app when GID 0 is used.
 RUN mkdir -p models && \
-    chown -R appuser:appuser /app
+    chown -R appuser:0 /app && \
+    chmod -R g+rwx /app
 
 # Switch to non-root user
 USER appuser
