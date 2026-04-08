@@ -5,7 +5,9 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 import logging
+import time
 from app.utils import get_current_timestamp, is_model_loaded
+from app.utils.ingestion_logger import send_log  # ADD
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,7 @@ class AnomalyPredictionRequest(BaseModel):
 class AnomalyPredictionResponse(BaseModel):
     """Response for anomaly prediction"""
     model_config = {"protected_namespaces": ()}
-    
+
     log_id: str
     is_anomaly: bool
     anomaly_score: float
@@ -51,7 +53,7 @@ class TrainingRequest(BaseModel):
 class TrainingResponse(BaseModel):
     """Response for model training"""
     model_config = {"protected_namespaces": ()}
-    
+
     status: str
     model_version: str
     samples_trained: int
@@ -91,11 +93,11 @@ async def predict_anomaly(
 ) -> AnomalyPredictionResponse:
     """
     Predict if a log entry is anomalous
-    
+
     Args:
         request: FastAPI request object
         prediction_request: Prediction request with log features
-        
+
     Returns:
         Anomaly prediction result
     """
@@ -105,13 +107,41 @@ async def predict_anomaly(
         "Model not loaded. Please train a model first using /api/v1/train endpoint"
     )
 
+    start = time.time()  # ADD
     try:
         result = model_service.predict(prediction_request.features.model_dump())
+        elapsed_ms = round((time.time() - start) * 1000)  # ADD
+        is_anomaly = result["is_anomaly"]                  # ADD
+
+        # ADD — ship result to ingestion service
+        send_log(
+            "WARN" if is_anomaly else "INFO",
+            f"Anomaly detected for log {prediction_request.log_id}" if is_anomaly
+            else f"Log scored normal: {prediction_request.log_id}",
+            {
+                "logId": prediction_request.log_id,
+                "isAnomaly": is_anomaly,
+                "anomalyScore": result["anomaly_score"],
+                "confidence": result["confidence"],
+                "inputService": prediction_request.features.service,
+                "inputLevel": prediction_request.features.level,
+                "hasException": prediction_request.features.has_exception,
+                "hasTimeout": prediction_request.features.has_timeout,
+                "hasConnectionError": prediction_request.features.has_connection_error,
+                "inferenceTimeMs": elapsed_ms,
+                "modelVersion": model_service.model_version,
+            }
+        )
+
         return _build_prediction_response(
             prediction_request.log_id, result, model_service.model_version
         )
     except Exception as e:
         logger.error(f"Error predicting anomaly: {e}")
+        send_log("ERROR", f"Prediction failed for log {prediction_request.log_id}", {  # ADD
+            "logId": prediction_request.log_id,                                         # ADD
+            "error": str(e),                                                             # ADD
+        })                                                                               # ADD
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error predicting anomaly: {str(e)}"
@@ -136,8 +166,9 @@ async def predict_anomaly_batch(
     model_service = request.app.state.model_service
     _require_model_loaded(model_service)
 
+    start = time.time()  # ADD
     try:
-        return [
+        results = [
             _build_prediction_response(
                 pr.log_id,
                 model_service.predict(pr.features.model_dump()),
@@ -145,8 +176,29 @@ async def predict_anomaly_batch(
             )
             for pr in prediction_requests
         ]
+        elapsed_ms = round((time.time() - start) * 1000)  # ADD
+
+        # ADD — one summary log for the whole batch
+        anomaly_count = sum(1 for r in results if r.is_anomaly)
+        send_log(
+            "WARN" if anomaly_count > 0 else "INFO",
+            f"Batch prediction complete: {anomaly_count}/{len(results)} anomalies detected",
+            {
+                "batchSize": len(results),
+                "anomalyCount": anomaly_count,
+                "normalCount": len(results) - anomaly_count,
+                "inferenceTimeMs": elapsed_ms,
+                "modelVersion": model_service.model_version,
+            }
+        )
+
+        return results
     except Exception as e:
         logger.error(f"Error in batch prediction: {e}")
+        send_log("ERROR", "Batch prediction failed", {  # ADD
+            "batchSize": len(prediction_requests),       # ADD
+            "error": str(e),                             # ADD
+        })                                               # ADD
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error in batch prediction: {str(e)}"
@@ -160,36 +212,44 @@ async def train_model(
 ) -> TrainingResponse:
     """
     Train a new anomaly detection model
-    
+
     Args:
         request: FastAPI request object
         training_request: Training request with data and parameters
-        
+
     Returns:
         Training result
     """
     model_service = request.app.state.model_service
-    
+
     if model_service is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Model service not initialized"
         )
-    
+
     try:
         logger.info(f"Training model with {len(training_request.training_data)} samples")
-        
+
         # Train the model
         model_service.train(
             training_data=training_request.training_data,
             contamination=training_request.contamination
         )
-        
+
         # Save the model
         model_service.save_model()
-        
+
         logger.info(f"Model trained successfully: version {model_service.model_version}")
-        
+
+        # ADD — log training completion
+        send_log("INFO", f"Model training complete: version {model_service.model_version}", {
+            "modelVersion": model_service.model_version,
+            "samplesTrained": len(training_request.training_data),
+            "contamination": training_request.contamination,
+            "trainedAt": model_service.trained_at,
+        })
+
         return TrainingResponse(
             status="success",
             model_version=model_service.model_version,
@@ -197,9 +257,13 @@ async def train_model(
             contamination=training_request.contamination,
             trained_at=model_service.trained_at
         )
-        
+
     except Exception as e:
         logger.error(f"Error training model: {e}")
+        send_log("ERROR", f"Model training failed: {str(e)}", {  # ADD
+            "sampleCount": len(training_request.training_data),  # ADD
+            "error": str(e),                                      # ADD
+        })                                                        # ADD
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error training model: {str(e)}"
@@ -210,21 +274,21 @@ async def train_model(
 async def get_model_info(request: Request) -> Dict[str, Any]:
     """
     Get information about the current model
-    
+
     Args:
         request: FastAPI request object
-        
+
     Returns:
         Model information
     """
     model_service = request.app.state.model_service
-    
+
     if not is_model_loaded(model_service):
         return {
             "status": "not_loaded",
             "message": "No model is currently loaded"
         }
-    
+
     return {
         "status": "loaded",
         "version": model_service.model_version,
@@ -233,4 +297,3 @@ async def get_model_info(request: Request) -> Dict[str, Any]:
         "model_type": "IsolationForest"
     }
 
-# Made with Bob

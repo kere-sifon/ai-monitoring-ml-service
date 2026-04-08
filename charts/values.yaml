@@ -46,6 +46,9 @@ env:
   MODEL_PATH: /app/models
   LOG_LEVEL: INFO
   MODEL_TYPE: isolation-forest
+  LOG_INGESTION_URL: "http://log-ingestion-service.ai-monitoring.svc.cluster.local:8081"  # ADD
+  LOG_INGESTION_ENABLED: "true"                                                            # ADD
+  APP_ENV: "local"                                                                         # ADD
 
 persistence:
   # Disabled by default - service works without it. Models are stored in ephemeral storage.
