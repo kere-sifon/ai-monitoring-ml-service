@@ -90,6 +90,5 @@ openshift:
       insecureEdgeTerminationPolicy: Redirect
       destinationCACertificate: ""
   securityContext:
-    # OpenShift assigns random UID, so we use fsGroup for volume permissions
+    # Merged into pod securityContext when openshift.enabled (PVC / group-writable volumes)
     fsGroup: 1000
-    runAsNonRoot: true

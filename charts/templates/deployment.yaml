@@ -18,10 +18,14 @@ spec:
         {{- include "ml-service.selectorLabels" . | nindent 8 }}
         tier: backend
     spec:
-      {{- if .Values.openshift.enabled }}
+      # Pod Security "restricted" (K8s 1.28+ / OpenShift): seccomp + non-root
       securityContext:
-        {{- toYaml .Values.openshift.securityContext | nindent 8 }}
-      {{- end }}
+        seccompProfile:
+          type: RuntimeDefault
+        runAsNonRoot: true
+        {{- if .Values.openshift.enabled }}
+        fsGroup: {{ .Values.openshift.securityContext.fsGroup }}
+        {{- end }}
       serviceAccountName: {{ include "ml-service.serviceAccountName" . }}
       automountServiceAccountToken: false
       {{- with .Values.tolerations }}
@@ -45,6 +49,11 @@ spec:
             - name: {{ $key }}
               value: {{ $val | quote }}
             {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
