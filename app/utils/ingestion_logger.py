@@ -1,11 +1,9 @@
 # app/utils/ingestion_logger.py
 
-import os
-import requests
 import logging
-import urllib3
+import os
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +22,7 @@ def send_log(level: str, message: str, metadata: dict = None):
         return
 
     try:
-        requests.post(
+        httpx.post(
             f"{_INGESTION_URL}/api/v1/logs",
             json={
                 "level": level,
@@ -33,7 +31,7 @@ def send_log(level: str, message: str, metadata: dict = None):
                 "environment": os.getenv("APP_ENV", "local"),
                 "metadata": metadata or {},
             },
-            timeout=2,
+            timeout=2.0,
             verify=False,
         )
     except Exception as e:
