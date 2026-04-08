@@ -90,5 +90,7 @@ openshift:
       insecureEdgeTerminationPolicy: Redirect
       destinationCACertificate: ""
   securityContext:
-    # Merged into pod securityContext when openshift.enabled (PVC / group-writable volumes)
-    fsGroup: 1000
+    # Optional pod fsGroup when openshift.enabled. Leave unset (empty) for default restricted SCC —
+    # a fixed GID like 1000 is often rejected unless it falls in the namespace supplemental range.
+    # Set only if persistence needs a specific group and your SCC allows it.
+    fsGroup: ""

@@ -24,7 +24,12 @@ spec:
           type: RuntimeDefault
         runAsNonRoot: true
         {{- if .Values.openshift.enabled }}
+        # restricted-v3 (OpenShift 4.18+ / K8s 1.33+): must be explicit, not null
+        hostUsers: false
+        {{- if .Values.openshift.securityContext.fsGroup }}
+        # Omit fsGroup unless your namespace SCC allows this GID (fixed 1000 often fails on restricted-v2)
         fsGroup: {{ .Values.openshift.securityContext.fsGroup }}
+        {{- end }}
         {{- end }}
       serviceAccountName: {{ include "ml-service.serviceAccountName" . }}
       automountServiceAccountToken: false
