@@ -2,6 +2,7 @@
 AI Log Monitoring - ML Service
 FastAPI application for anomaly detection using Isolation Forest
 """
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -11,6 +12,7 @@ import os
 from app.api import health, anomaly
 from app.services.model_service import ModelService
 from app.utils import get_current_timestamp
+from app.utils.ingestion_logger import send_log  # ADD
 
 # Configure logging
 logging.basicConfig(
@@ -23,31 +25,40 @@ logger = logging.getLogger(__name__)
 model_service = None
 
 
+def _model_dir() -> str:
+    """Model storage path: MODEL_PATH (Helm/K8s), MODEL_DIR, or default relative dir."""
+    return os.environ.get("MODEL_PATH") or os.environ.get("MODEL_DIR") or "models"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events"""
     global model_service
-    
+
     # Startup
     logger.info("Starting ML Service...")
-    model_service = ModelService()
-    
+    model_service = ModelService(model_dir=_model_dir())
+
     # Try to load existing model
     try:
         model_service.load_model()
         logger.info("Loaded existing model successfully")
+        send_log("INFO", "ML Service started — model loaded from disk")  # ADD
     except FileNotFoundError:
         logger.warning("No existing model found. Train a new model using /api/v1/train endpoint")
+        send_log("WARN", "ML Service started — no model found, awaiting training")  # ADD
     except Exception as e:
         logger.error(f"Error loading model: {e}")
-    
+        send_log("ERROR", f"ML Service startup failed: {str(e)}", {"error": str(e)})  # ADD
+
     app.state.model_service = model_service
     logger.info("ML Service started successfully")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down ML Service...")
+    send_log("INFO", "ML Service shutting down")  # ADD
 
 
 # Create FastAPI application
@@ -57,6 +68,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
 
 def _get_cors_origins() -> list:
     """Get CORS origins from CORS_ORIGINS env var. Default: allow all."""

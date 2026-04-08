@@ -4,7 +4,7 @@ Tests for main application
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
-from main import app, _get_cors_origins
+from main import app, _get_cors_origins, _model_dir
 
 
 @pytest.fixture
@@ -68,6 +68,18 @@ class TestMainApp:
         with patch("main.os.getenv", return_value="https://a.com , https://b.com"):
             origins = _get_cors_origins()
         assert origins == ["https://a.com", "https://b.com"]
+
+    def test_model_dir_prefers_model_path(self):
+        with patch.dict("os.environ", {"MODEL_PATH": "/app/models", "MODEL_DIR": "/tmp/x"}, clear=True):
+            assert _model_dir() == "/app/models"
+
+    def test_model_dir_uses_model_dir_when_model_path_missing(self):
+        with patch.dict("os.environ", {"MODEL_DIR": "/data/m"}, clear=True):
+            assert _model_dir() == "/data/m"
+
+    def test_model_dir_default(self):
+        with patch.dict("os.environ", {}, clear=True):
+            assert _model_dir() == "models"
 
     def test_routers_included(self):
         """Test that routers are included"""

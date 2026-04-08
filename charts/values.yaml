@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/kere-sifon/ai-monitoring-ml-service
   pullPolicy: IfNotPresent
-  tag: "1.0.5"
+  tag: "1.1.2"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -46,6 +46,9 @@ env:
   MODEL_PATH: /app/models
   LOG_LEVEL: INFO
   MODEL_TYPE: isolation-forest
+  LOG_INGESTION_URL: "http://log-ingestion.ai-monitoring.svc.cluster.local:8081"  # ADD
+  LOG_INGESTION_ENABLED: "true"                                                            # ADD
+  APP_ENV: "local"                                                                         # ADD
 
 persistence:
   # Disabled by default - service works without it. Models are stored in ephemeral storage.
@@ -87,6 +90,7 @@ openshift:
       insecureEdgeTerminationPolicy: Redirect
       destinationCACertificate: ""
   securityContext:
-    # OpenShift assigns random UID, so we use fsGroup for volume permissions
-    fsGroup: 1000
-    runAsNonRoot: true
+    # Optional pod fsGroup when openshift.enabled. Leave unset (empty) for default restricted SCC —
+    # a fixed GID like 1000 is often rejected unless it falls in the namespace supplemental range.
+    # Set only if persistence needs a specific group and your SCC allows it.
+    fsGroup: ""

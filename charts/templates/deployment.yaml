@@ -18,6 +18,19 @@ spec:
         {{- include "ml-service.selectorLabels" . | nindent 8 }}
         tier: backend
     spec:
+      # Pod Security "restricted" (K8s 1.28+ / OpenShift): seccomp + non-root
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        runAsNonRoot: true
+        {{- if .Values.openshift.enabled }}
+        # restricted-v3 (OpenShift 4.18+ / K8s 1.33+): must be explicit, not null
+        hostUsers: false
+        {{- if .Values.openshift.securityContext.fsGroup }}
+        # Omit fsGroup unless your namespace SCC allows this GID (fixed 1000 often fails on restricted-v2)
+        fsGroup: {{ .Values.openshift.securityContext.fsGroup }}
+        {{- end }}
+        {{- end }}
       serviceAccountName: {{ include "ml-service.serviceAccountName" . }}
       automountServiceAccountToken: false
       {{- with .Values.tolerations }}
@@ -37,14 +50,15 @@ spec:
               containerPort: 8000
               protocol: TCP
           env:
-            - name: MODEL_PATH
-              value: {{ .Values.env.MODEL_PATH | quote }}
-            - name: LOG_LEVEL
-              value: {{ .Values.env.LOG_LEVEL | quote }}
-            {{- if .Values.env.MODEL_TYPE }}
-            - name: MODEL_TYPE
-              value: {{ .Values.env.MODEL_TYPE | quote }}
+            {{- range $key, $val := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
             {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
